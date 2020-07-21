@@ -388,7 +388,7 @@ func (v *Viper) WatchConfig() {
 						return
 					}
 
-				case err, ok := <-watcher.Errors:
+				case _, ok := <-watcher.Errors:
 					if ok { // 'Errors' channel is not closed
 						// Silently handle error
 					}
@@ -1722,8 +1722,6 @@ func mergeMaps(
 		if svType != tvType {
 			continue
 		}
-
-			sk, svType, tvType, sv, tv)
 
 		switch ttv := tv.(type) {
 		case map[interface{}]interface{}:
