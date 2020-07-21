@@ -20,7 +20,6 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/spf13/cast"
-	jww "github.com/spf13/jwalterweatherman"
 )
 
 // ConfigParseError denotes failing to parse configuration file.
@@ -89,8 +88,6 @@ func insensitiviseMap(m map[string]interface{}) {
 }
 
 func absPathify(inPath string) string {
-	jww.INFO.Println("Trying to resolve absolute path to", inPath)
-
 	if strings.HasPrefix(inPath, "$HOME") {
 		inPath = userHomeDir() + inPath[5:]
 	}
@@ -109,8 +106,6 @@ func absPathify(inPath string) string {
 		return filepath.Clean(p)
 	}
 
-	jww.ERROR.Println("Couldn't discover absolute path")
-	jww.ERROR.Println(err)
 	return ""
 }
 

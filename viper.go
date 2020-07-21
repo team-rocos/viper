@@ -26,7 +26,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -42,7 +41,6 @@ import (
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/afero"
 	"github.com/spf13/cast"
-	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/pflag"
 	"github.com/subosito/gotenv"
 	"gopkg.in/ini.v1"
@@ -344,13 +342,12 @@ func (v *Viper) WatchConfig() {
 	go func() {
 		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
-			log.Fatal(err)
+			return
 		}
 		defer watcher.Close()
 		// we have to watch the entire directory to pick up renames/atomic saves in a cross-platform way
 		filename, err := v.getConfigFile()
 		if err != nil {
-			log.Printf("error: %v\n", err)
 			initWG.Done()
 			return
 		}
@@ -380,7 +377,7 @@ func (v *Viper) WatchConfig() {
 						realConfigFile = currentConfigFile
 						err := v.ReadInConfig()
 						if err != nil {
-							log.Printf("error reading config file: %v\n", err)
+							// Silently handle error. Known error occurs where ReadInConfig occasionally results in an empty byte array is passed to json.unmarshal.
 						}
 						if v.onConfigChange != nil {
 							v.onConfigChange(event)
@@ -393,7 +390,7 @@ func (v *Viper) WatchConfig() {
 
 				case err, ok := <-watcher.Errors:
 					if ok { // 'Errors' channel is not closed
-						log.Printf("watcher error: %v\n", err)
+						// Silently handle error
 					}
 					eventsWG.Done()
 					return
@@ -469,7 +466,6 @@ func AddConfigPath(in string) { v.AddConfigPath(in) }
 func (v *Viper) AddConfigPath(in string) {
 	if in != "" {
 		absin := absPathify(in)
-		jww.INFO.Println("adding", absin, "to paths to search")
 		if !stringInSlice(absin, v.configPaths) {
 			v.configPaths = append(v.configPaths, absin)
 		}
@@ -492,7 +488,6 @@ func (v *Viper) AddRemoteProvider(provider, endpoint, path string) error {
 		return UnsupportedRemoteProviderError(provider)
 	}
 	if provider != "" && endpoint != "" {
-		jww.INFO.Printf("adding %s:%s to remote provider list", provider, endpoint)
 		rp := &defaultRemoteProvider{
 			endpoint: endpoint,
 			provider: provider,
@@ -524,7 +519,6 @@ func (v *Viper) AddSecureRemoteProvider(provider, endpoint, path, secretkeyring 
 		return UnsupportedRemoteProviderError(provider)
 	}
 	if provider != "" && endpoint != "" {
-		jww.INFO.Printf("adding %s:%s to remote provider list", provider, endpoint)
 		rp := &defaultRemoteProvider{
 			endpoint:      endpoint,
 			provider:      provider,
@@ -1266,14 +1260,12 @@ func (v *Viper) registerAlias(alias string, key string) {
 			v.aliases[alias] = key
 		}
 	} else {
-		jww.WARN.Println("Creating circular reference alias", alias, key, v.realKey(key))
 	}
 }
 
 func (v *Viper) realKey(key string) string {
 	newkey, exists := v.aliases[key]
 	if exists {
-		jww.DEBUG.Println("Alias", key, "to", newkey)
 		return v.realKey(newkey)
 	}
 	return key
@@ -1334,7 +1326,6 @@ func (v *Viper) Set(key string, value interface{}) {
 // and key/value stores, searching in one of the defined paths.
 func ReadInConfig() error { return v.ReadInConfig() }
 func (v *Viper) ReadInConfig() error {
-	jww.INFO.Println("Attempting to read in config file")
 	filename, err := v.getConfigFile()
 	if err != nil {
 		return err
@@ -1344,7 +1335,6 @@ func (v *Viper) ReadInConfig() error {
 		return UnsupportedConfigError(v.getConfigType())
 	}
 
-	jww.DEBUG.Println("Reading file: ", filename)
 	file, err := afero.ReadFile(v.fs, filename)
 	if err != nil {
 		return err
@@ -1364,7 +1354,6 @@ func (v *Viper) ReadInConfig() error {
 // MergeInConfig merges a new configuration with an existing config.
 func MergeInConfig() error { return v.MergeInConfig() }
 func (v *Viper) MergeInConfig() error {
-	jww.INFO.Println("Attempting to merge in config file")
 	filename, err := v.getConfigFile()
 	if err != nil {
 		return err
@@ -1450,7 +1439,6 @@ func (v *Viper) SafeWriteConfigAs(filename string) error {
 }
 
 func (v *Viper) writeConfig(filename string, force bool) error {
-	jww.INFO.Println("Attempting to write configuration to file.")
 	var configType string
 
 	ext := filepath.Ext(filename)
@@ -1713,7 +1701,6 @@ func mergeMaps(
 	for sk, sv := range src {
 		tk := keyExists(sk, tgt)
 		if tk == "" {
-			jww.TRACE.Printf("tk=\"\", tgt[%s]=%v", sk, sv)
 			tgt[sk] = sv
 			if itgt != nil {
 				itgt[sk] = sv
@@ -1723,7 +1710,6 @@ func mergeMaps(
 
 		tv, ok := tgt[tk]
 		if !ok {
-			jww.TRACE.Printf("tgt[%s] != ok, tgt[%s]=%v", tk, sk, sv)
 			tgt[sk] = sv
 			if itgt != nil {
 				itgt[sk] = sv
@@ -1734,27 +1720,20 @@ func mergeMaps(
 		svType := reflect.TypeOf(sv)
 		tvType := reflect.TypeOf(tv)
 		if svType != tvType {
-			jww.ERROR.Printf(
-				"svType != tvType; key=%s, st=%v, tt=%v, sv=%v, tv=%v",
-				sk, svType, tvType, sv, tv)
 			continue
 		}
 
-		jww.TRACE.Printf("processing key=%s, st=%v, tt=%v, sv=%v, tv=%v",
 			sk, svType, tvType, sv, tv)
 
 		switch ttv := tv.(type) {
 		case map[interface{}]interface{}:
-			jww.TRACE.Printf("merging maps (must convert)")
 			tsv := sv.(map[interface{}]interface{})
 			ssv := castToMapStringInterface(tsv)
 			stv := castToMapStringInterface(ttv)
 			mergeMaps(ssv, stv, ttv)
 		case map[string]interface{}:
-			jww.TRACE.Printf("merging maps")
 			mergeMaps(sv.(map[string]interface{}), ttv, nil)
 		default:
-			jww.TRACE.Printf("setting value")
 			tgt[tk] = sv
 			if itgt != nil {
 				itgt[tk] = sv
@@ -2024,11 +2003,8 @@ func (v *Viper) getConfigFile() (string, error) {
 }
 
 func (v *Viper) searchInPath(in string) (filename string) {
-	jww.DEBUG.Println("Searching for config in ", in)
 	for _, ext := range SupportedExts {
-		jww.DEBUG.Println("Checking for", filepath.Join(in, v.configName+"."+ext))
 		if b, _ := exists(v.fs, filepath.Join(in, v.configName+"."+ext)); b {
-			jww.DEBUG.Println("Found: ", filepath.Join(in, v.configName+"."+ext))
 			return filepath.Join(in, v.configName+"."+ext)
 		}
 	}
@@ -2054,8 +2030,6 @@ func (v *Viper) caseKey(in string) (filename string) {
 // Search all configPaths for any config file.
 // Returns the first path that exists (and is a config file).
 func (v *Viper) findConfigFile() (string, error) {
-	jww.INFO.Println("Searching for config in ", v.configPaths)
-
 	for _, cp := range v.configPaths {
 		file := v.searchInPath(cp)
 		if file != "" {
